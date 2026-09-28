@@ -1,0 +1,19 @@
+node_modules/
+dist/
+.vite/
+*.log
+
+# Tauri / Rust
+src-tauri/target/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
