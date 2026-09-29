@@ -47,7 +47,8 @@ function NetworkNode({data, selected}: NodeProps<Node<Data>>) {
   if (d.component==='tee') return <div className={`node junction ${selected?'selected':''}`}><BiPort position={Position.Left} id="left"/><BiPort position={Position.Right} id="right"/><BiPort position={Position.Bottom} id="bottom"/><div className="tee-shape">T</div><b>T-koppling</b><span>V {portSizes.left} · H {portSizes.right}</span><span>N {portSizes.bottom}</span></div>
   if (d.component==='cross') return <div className={`node junction ${selected?'selected':''}`}><BiPort position={Position.Left} id="left"/><BiPort position={Position.Right} id="right"/><BiPort position={Position.Top} id="top"/><BiPort position={Position.Bottom} id="bottom"/><div className="tee-shape">✚</div><b>X-koppling</b><span>L {portSizes.left} · R {portSizes.right}</span><span>U {portSizes.top} · N {portSizes.bottom}</span></div>
   if (d.component==='inlet') return <div className={`node meter inlet ${selected?'selected':''}`}><Port type="source" position={Position.Right}/><Gauge size={25}/><b>INLOPP</b><span>{d.flow} l/s · {d.pressure} bar</span></div>
-  if (d.component==='leak') return <div className={`node leak ${selected?'selected':''}`}><BiPort position={Position.Left} id="left"/><Gauge size={22}/><b>{d.label}</b><span>LÄCKA</span><small>{Number(d.leakFlowLs ?? 1).toFixed(2)} l/s</small></div>\n  if (d.component==='open') return <div className={`node open-boundary ${selected?'selected':''}`}><BiPort position={Position.Left} id="left"/><Waves size={22}/><b>{d.label}</b><span>ÖPPEN</span><small>Okänt efter denna punkt</small></div>
+  if (d.component==='leak') return <div className={`node leak ${selected?'selected':''}`}><BiPort position={Position.Left} id="left"/><Gauge size={22}/><b>{d.label}</b><span>LÄCKA</span><small>{Number(d.leakFlowLs ?? 1).toFixed(2)} l/s</small></div>
+  if (d.component==='open') return <div className={`node open-boundary ${selected?'selected':''}`}><BiPort position={Position.Left} id="left"/><Waves size={22}/><b>{d.label}</b><span>ÖPPEN</span><small>Okänt efter denna punkt</small></div>
   return <div className={`node meter ${selected?'selected':''}`}><Port type="target" position={Position.Left}/><Gauge size={23}/><b>{d.label}</b><span>{d.template || 'Normalvilla'}</span><small>{Number(d.monthlyVolumeM3 ?? templateMonthlyM3[d.template ?? 'Normalvilla'] ?? 8).toFixed(1)} m³/mån · {Number(d.pressure ?? 0).toFixed(2)} bar</small></div>
 }
 
@@ -168,7 +169,8 @@ function App(){
       component==='tee'?{label:'Ny T-koppling',component,size:'DN63',portSizes:{left:'DN63',right:'DN63',bottom:'DN63'}}:
       component==='cross'?{label:'Ny X-koppling',component,size:'DN63',portSizes:{left:'DN63',right:'DN63',top:'DN63',bottom:'DN63'}}:
       component==='inlet'?{label:'Inlopp',component,flow:5,pressure:5}:
-      component==='leak'?{label:`Läcka ${nodes.filter(n=>n.data.component==='leak').length+1}`,component,leakFlowLs:1}:\n      component==='open'?{label:'Öppen',component}:
+      component==='leak'?{label:`Läcka ${nodes.filter(n=>n.data.component==='leak').length+1}`,component,leakFlowLs:1}:
+      component==='open'?{label:'Öppen',component}:
       {label:`Hushåll ${nodes.filter(n=>n.data.component==='meter').length+1}`,component,template:'Normalvilla',monthlyVolumeM3:8,pressure:4.5}
     setNodes(ns=>[...ns,{id,type:'network',position:center,data}]);setSelected(id)
   }
@@ -181,7 +183,8 @@ function App(){
   const exportCsv=()=>{
     const meters=nodes.filter(n=>n.data.component==='meter'||n.data.component==='inlet')
     const rows=['meter_id,label,volume_m3_per_report,pressure_bar,template,monthly_volume_m3',...meters.map(n=>`${n.id},"${n.data.label}",${n.data.monthlyVolumeM3??''},${n.data.pressure??''},"${n.data.template??''}",${n.data.monthlyVolumeM3??''}`)]
-    const blob=new Blob([rows.join('\n')],{type:'text/csv;charset=utf-8'})
+    const blob=new Blob([rows.join('
+')],{type:'text/csv;charset=utf-8'})
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='vattennat-matare.csv';a.click();URL.revokeObjectURL(a.href);setStatus('CSV exporterad')
   }
   const load=(e:React.ChangeEvent<HTMLInputElement>)=>{
@@ -228,7 +231,8 @@ function App(){
         {selectedNode.data.component==='pipe' && <label>Längd (m)<input type="number" value={selectedNode.data.length} onChange={e=>update({length:Number(e.target.value)})}/></label>}
         {selectedNode.data.component==='inlet' && <><label>Inloppsflöde (l/s)<input type="number" step="0.01" value={selectedNode.data.flow ?? 5} onChange={e=>update({flow:Number(e.target.value)})}/></label><label>Tryck (bar)<input type="number" step="0.01" value={selectedNode.data.pressure ?? 5} onChange={e=>update({pressure:Number(e.target.value)})}/></label></>}
         {selectedNode.data.component==='meter' && <><label>Tryck vid mätpunkten (bar)<input type="number" step="0.01" value={selectedNode.data.pressure ?? 4.5} onChange={e=>update({pressure:Number(e.target.value)})}/></label><label>Förbrukningsprofil<select value={selectedNode.data.template ?? 'Normalvilla'} onChange={e=>update({template:e.target.value,monthlyVolumeM3:templateMonthlyM3[e.target.value] ?? 8})}>{templates.map(t=><option key={t}>{t}</option>)}</select></label><label>Månadsförbrukning (m³)<input type="number" min="0" step="0.1" value={selectedNode.data.monthlyVolumeM3 ?? templateMonthlyM3[selectedNode.data.template ?? 'Normalvilla'] ?? 8} onChange={e=>update({monthlyVolumeM3:Number(e.target.value)})}/></label><div className="form-hint">Normalvilla är kalibrerad till 8 m³/månad. Simuleringen rapporterar vattenmängd per timme, inte l/s.</div></>}
-        {selectedNode.data.component==='open' && <div className="form-hint">Den här anslutningen markerar gränsen för det modellerade området. Allt efter Öppen betraktas som okänt och behöver inte finnas med i projektet.</div>}\n        {selectedNode.data.component==='leak' && <><label>Läckflöde (l/s)<input type="number" min="0" step="0.01" value={selectedNode.data.leakFlowLs ?? 1} onChange={e=>update({leakFlowLs:Math.max(0,Number(e.target.value))})}/></label><div className="form-hint">Läckan är konstant i V1. Vid timrapportering motsvarar 1,00 l/s = 3,60 m³ per timme. Hydrauliskt tryckfall beräknas ännu inte.</div></>}
+        {selectedNode.data.component==='open' && <div className="form-hint">Den här anslutningen markerar gränsen för det modellerade området. Allt efter Öppen betraktas som okänt och behöver inte finnas med i projektet.</div>}
+        {selectedNode.data.component==='leak' && <><label>Läckflöde (l/s)<input type="number" min="0" step="0.01" value={selectedNode.data.leakFlowLs ?? 1} onChange={e=>update({leakFlowLs:Math.max(0,Number(e.target.value))})}/></label><div className="form-hint">Läckan är konstant i V1. Vid timrapportering motsvarar 1,00 l/s = 3,60 m³ per timme. Hydrauliskt tryckfall beräknas ännu inte.</div></>}
         <button className="danger" onClick={deleteSelected}><Trash2 size={16}/> Ta bort</button>
       </div>}
     </aside>
