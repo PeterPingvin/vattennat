@@ -10,3 +10,5 @@
 }
 
 .leak{border-color:#c47b35}.leak svg{color:#c47b35;margin-bottom:3px}.leak span{color:#a35d1e!important;font-weight:700}.leak .react-flow__handle{background:#c47b35}
+
+.open-boundary{border-color:#6b7280;border-style:dashed}.open-boundary svg{color:#6b7280;margin-bottom:3px}.open-boundary span{color:#4b5563!important;font-weight:700}.open-boundary small{max-width:130px;line-height:1.25}
