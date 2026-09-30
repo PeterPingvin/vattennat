@@ -183,8 +183,7 @@ function App(){
   const exportCsv=()=>{
     const meters=nodes.filter(n=>n.data.component==='meter'||n.data.component==='inlet')
     const rows=['meter_id,label,volume_m3_per_report,pressure_bar,template,monthly_volume_m3',...meters.map(n=>`${n.id},"${n.data.label}",${n.data.monthlyVolumeM3??''},${n.data.pressure??''},"${n.data.template??''}",${n.data.monthlyVolumeM3??''}`)]
-    const blob=new Blob([rows.join('
-')],{type:'text/csv;charset=utf-8'})
+    const blob=new Blob([rows.join('\n')],{type:'text/csv;charset=utf-8'})
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='vattennat-matare.csv';a.click();URL.revokeObjectURL(a.href);setStatus('CSV exporterad')
   }
   const load=(e:React.ChangeEvent<HTMLInputElement>)=>{
