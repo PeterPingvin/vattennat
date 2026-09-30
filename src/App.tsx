@@ -5,7 +5,8 @@ import {
   type Connection, type Edge, type Node, type NodeProps, type ReactFlowInstance
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Download, FileDown, FileUp, Gauge, Play, Save, Square, Trash2, Waves, X } from 'lucide-react'
+import { FileDown, FileUp, Gauge, Play, Save, Square, Trash2, Waves, X } from 'lucide-react'
+import { calculateHydraulics } from './hydraulics'
 
 type ComponentType = 'pipe'|'elbow'|'tee'|'cross'|'inlet'|'meter'|'leak'|'open'
 type PortDimensions = { left: string; right: string; top: string; bottom: string }
@@ -21,6 +22,7 @@ type SimulationRow = {
   meterTotals: Record<string, number>
   leakVolumes: Record<string, number>
   totalLeakVolumeM3: number
+  meterPressures: Record<string, number>
 }
 
 const sizes = ['DN25','DN32','DN40','DN50','DN63','DN75','DN90','DN110','DN160','DN200']
@@ -49,7 +51,7 @@ function NetworkNode({data, selected}: NodeProps<Node<Data>>) {
   if (d.component==='inlet') return <div className={`node meter inlet ${selected?'selected':''}`}><Port type="source" position={Position.Right}/><Gauge size={25}/><b>INLOPP</b><span>{d.flow} l/s · {d.pressure} bar</span></div>
   if (d.component==='leak') return <div className={`node leak ${selected?'selected':''}`}><BiPort position={Position.Left} id="left"/><Gauge size={22}/><b>{d.label}</b><span>LÄCKA</span><small>{Number(d.leakFlowLs ?? 1).toFixed(2)} l/s</small></div>
   if (d.component==='open') return <div className={`node open-boundary ${selected?'selected':''}`}><BiPort position={Position.Left} id="left"/><Waves size={22}/><b>{d.label}</b><span>ÖPPEN</span><small>Okänt efter denna punkt</small></div>
-  return <div className={`node meter ${selected?'selected':''}`}><Port type="target" position={Position.Left}/><Gauge size={23}/><b>{d.label}</b><span>{d.template || 'Normalvilla'}</span><small>{Number(d.monthlyVolumeM3 ?? templateMonthlyM3[d.template ?? 'Normalvilla'] ?? 8).toFixed(1)} m³/mån · {Number(d.pressure ?? 0).toFixed(2)} bar</small></div>
+  return <div className={`node meter ${selected?'selected':''}`}><Port type="target" position={Position.Left}/><Gauge size={23}/><b>{d.label}</b><span>{d.template || 'Normalvilla'}</span><small>{Number(d.monthlyVolumeM3 ?? templateMonthlyM3[d.template ?? 'Normalvilla'] ?? 8).toFixed(1)} m³/mån · {d.hydraulicPressure === undefined ? '—' : Number(d.hydraulicPressure).toFixed(2)} bar</small></div>
 }
 
 const nodeTypes = { network: NetworkNode }
@@ -59,9 +61,9 @@ const initialNodes: Node<Data>[] = [
   {id:'pipe-1', type:'network', position:{x:280,y:275}, data:{label:'Rör 1',component:'pipe',size:'DN63',length:100}},
   {id:'tee-1', type:'network', position:{x:490,y:275}, data:{label:'T1',component:'tee',size:'DN63',portSizes:{left:'DN63',right:'DN50',bottom:'DN40'}}},
   {id:'pipe-2', type:'network', position:{x:680,y:180}, data:{label:'Rör 2',component:'pipe',size:'DN50',length:60}},
-  {id:'meter-1', type:'network', position:{x:900,y:180}, data:{label:'Hushåll 1',component:'meter',size:'DN25',template:'Normalvilla',monthlyVolumeM3:8,pressure:4.6}},
+  {id:'meter-1', type:'network', position:{x:900,y:180}, data:{label:'Hushåll 1',component:'meter',size:'DN25',template:'Normalvilla',monthlyVolumeM3:8}},
   {id:'pipe-3', type:'network', position:{x:680,y:380}, data:{label:'Rör 3',component:'pipe',size:'DN50',length:80}},
-  {id:'meter-2', type:'network', position:{x:900,y:380}, data:{label:'Hushåll 2',component:'meter',size:'DN25',template:'Normalvilla',monthlyVolumeM3:8,pressure:4.4}},
+  {id:'meter-2', type:'network', position:{x:900,y:380}, data:{label:'Hushåll 2',component:'meter',size:'DN25',template:'Normalvilla',monthlyVolumeM3:8}},
 ]
 const initialEdges: Edge[] = [
   {id:'e1',source:'inlet-1',target:'pipe-1',animated:true},
@@ -97,7 +99,7 @@ function profileNormalization(template:string) {
   return sum
 }
 
-function buildSimulationRows(start:string, end:string, nodes:Node<Data>[]) {
+function buildSimulationRows(start:string, end:string, nodes:Node<Data>[], edges:Edge[]) {
   const from = new Date(start)
   const to = new Date(end)
   const meters = nodes.filter(n=>n.data.component==='meter')
@@ -130,7 +132,8 @@ function buildSimulationRows(start:string, end:string, nodes:Node<Data>[]) {
       meterTotals[m.id]=Number(totals[m.id].toFixed(6))
       total += volume
     })
-    rows.push({time:date.toISOString(),totalVolumeM3:Number(total.toFixed(6)),inletPressure:Number(inlet?.data.pressure ?? 0),meterVolumes,meterTotals,leakVolumes,totalLeakVolumeM3:Number(totalLeakVolumeM3.toFixed(6))})
+    const hydraulic = calculateHydraulics(nodes, edges, {meterVolumes, leakVolumes, inletPressureBar:Number(inlet?.data.pressure ?? 0)})
+    rows.push({time:date.toISOString(),totalVolumeM3:Number(total.toFixed(6)),inletPressure:Number(inlet?.data.pressure ?? 0),meterVolumes,meterTotals,leakVolumes,totalLeakVolumeM3:Number(totalLeakVolumeM3.toFixed(6)),meterPressures:hydraulic.meterPressures})
     if(rows.length>100000) break
   }
   return rows
@@ -171,7 +174,7 @@ function App(){
       component==='inlet'?{label:'Inlopp',component,flow:5,pressure:5}:
       component==='leak'?{label:`Läcka ${nodes.filter(n=>n.data.component==='leak').length+1}`,component,leakFlowLs:1}:
       component==='open'?{label:'Öppen',component}:
-      {label:`Hushåll ${nodes.filter(n=>n.data.component==='meter').length+1}`,component,template:'Normalvilla',monthlyVolumeM3:8,pressure:4.5}
+      {label:`Hushåll ${nodes.filter(n=>n.data.component==='meter').length+1}`,component,template:'Normalvilla',monthlyVolumeM3:8}
     setNodes(ns=>[...ns,{id,type:'network',position:center,data}]);setSelected(id)
   }
   const update=(patch:Partial<Data>)=> selected && setNodes(ns=>ns.map(n=>n.id===selected?{...n,data:{...n.data,...patch}}:n))
@@ -195,12 +198,13 @@ function App(){
     if(Number.isNaN(from.getTime())||Number.isNaN(to.getTime())){setSimError('Ange giltiga datum och tider.');return}
     if(to<=from){setSimError('Sluttiden måste vara efter starttiden.');return}
     if(nodes.filter(n=>n.data.component==='meter').length===0){setSimError('Lägg till minst en hushållsmätare innan simuleringen startas.');return}
-    const rows=buildSimulationRows(simStart,simEnd,nodes)
+    const rows=buildSimulationRows(simStart,simEnd,nodes,edges)
     setSimRows(rows);setSimIndex(0);setSimError('');setSimRunning(true);setStatus('Simulering körs')
   }
   const stopSimulation=()=>{setSimRunning(false);setStatus('Simulering pausad')}
   const closeSimulation=()=>{setSimRunning(false);setSimOpen(false);setSimError('')}
   const currentRow=simRows[Math.max(0,Math.min(simIndex-1,simRows.length-1))]
+  useEffect(()=>{ const row=simRows[Math.max(0,Math.min(simIndex-1,simRows.length-1))]; if(!row) return; setNodes(ns=>ns.map(n=>n.data.component==='meter' ? {...n,data:{...n.data,hydraulicPressure:row.meterPressures[n.id]}} : n)) },[simIndex,simRows,setNodes])
   const visibleRows=simRows.slice(0,simIndex).slice(-24)
   const progress=simRows.length?Math.round((simIndex/simRows.length)*100):0
   const componentButtons=useMemo(()=>[
@@ -229,9 +233,9 @@ function App(){
         </div>}
         {selectedNode.data.component==='pipe' && <label>Längd (m)<input type="number" value={selectedNode.data.length} onChange={e=>update({length:Number(e.target.value)})}/></label>}
         {selectedNode.data.component==='inlet' && <><label>Inloppsflöde (l/s)<input type="number" step="0.01" value={selectedNode.data.flow ?? 5} onChange={e=>update({flow:Number(e.target.value)})}/></label><label>Tryck (bar)<input type="number" step="0.01" value={selectedNode.data.pressure ?? 5} onChange={e=>update({pressure:Number(e.target.value)})}/></label></>}
-        {selectedNode.data.component==='meter' && <><label>Tryck vid mätpunkten (bar)<input type="number" step="0.01" value={selectedNode.data.pressure ?? 4.5} onChange={e=>update({pressure:Number(e.target.value)})}/></label><label>Förbrukningsprofil<select value={selectedNode.data.template ?? 'Normalvilla'} onChange={e=>update({template:e.target.value,monthlyVolumeM3:templateMonthlyM3[e.target.value] ?? 8})}>{templates.map(t=><option key={t}>{t}</option>)}</select></label><label>Månadsförbrukning (m³)<input type="number" min="0" step="0.1" value={selectedNode.data.monthlyVolumeM3 ?? templateMonthlyM3[selectedNode.data.template ?? 'Normalvilla'] ?? 8} onChange={e=>update({monthlyVolumeM3:Number(e.target.value)})}/></label><div className="form-hint">Normalvilla är kalibrerad till 8 m³/månad. Simuleringen rapporterar vattenmängd per timme, inte l/s.</div></>}
+        {selectedNode.data.component==='meter' && <><div className="form-hint"><b>Hydrauliskt tryck:</b> {selectedNode.data.hydraulicPressure === undefined ? 'Beräknas vid simulering.' : `${Number(selectedNode.data.hydraulicPressure).toFixed(2)} bar`}</div><label>Förbrukningsprofil<select value={selectedNode.data.template ?? 'Normalvilla'} onChange={e=>update({template:e.target.value,monthlyVolumeM3:templateMonthlyM3[e.target.value] ?? 8})}>{templates.map(t=><option key={t}>{t}</option>)}</select></label><label>Månadsförbrukning (m³)<input type="number" min="0" step="0.1" value={selectedNode.data.monthlyVolumeM3 ?? templateMonthlyM3[selectedNode.data.template ?? 'Normalvilla'] ?? 8} onChange={e=>update({monthlyVolumeM3:Number(e.target.value)})}/></label><div className="form-hint">Normalvilla är kalibrerad till 8 m³/månad. Simuleringen rapporterar vattenmängd per timme, inte l/s.</div></>}
         {selectedNode.data.component==='open' && <div className="form-hint">Den här anslutningen markerar gränsen för det modellerade området. Allt efter Öppen betraktas som okänt och behöver inte finnas med i projektet.</div>}
-        {selectedNode.data.component==='leak' && <><label>Läckflöde (l/s)<input type="number" min="0" step="0.01" value={selectedNode.data.leakFlowLs ?? 1} onChange={e=>update({leakFlowLs:Math.max(0,Number(e.target.value))})}/></label><div className="form-hint">Läckan är konstant i V1. Vid timrapportering motsvarar 1,00 l/s = 3,60 m³ per timme. Hydrauliskt tryckfall beräknas ännu inte.</div></>}
+        {selectedNode.data.component==='leak' && <><label>Läckflöde (l/s)<input type="number" min="0" step="0.01" value={selectedNode.data.leakFlowLs ?? 1} onChange={e=>update({leakFlowLs:Math.max(0,Number(e.target.value))})}/></label><div className="form-hint">Läckan är konstant i V1. Vid timrapportering motsvarar 1,00 l/s = 3,60 m³ per timme. Hydrauliskt tryckfall beräknas från nätets rör, dimensioner och kopplingar.</div></>}
         <button className="danger" onClick={deleteSelected}><Trash2 size={16}/> Ta bort</button>
       </div>}
     </aside>
@@ -244,14 +248,14 @@ function App(){
             <label>Startdatum / tid<input type="datetime-local" value={simStart} onChange={e=>setSimStart(e.target.value)} disabled={simRunning}/></label>
             <label>Slutdatum / tid<input type="datetime-local" value={simEnd} onChange={e=>setSimEnd(e.target.value)} disabled={simRunning}/></label>
             <label>Simuleringshastighet<select value={simSpeed} onChange={e=>setSimSpeed(Number(e.target.value))} disabled={simRunning}>{speedOptions.map(s=><option key={s} value={s}>{s}x</option>)}</select></label>
-            <div className="sim-note"><b>Rapportering:</b> 1 gång/timme · vattenmängd i m³ + tryck i bar<br/><b>Normalvilla:</b> 8 m³/månad som utgångspunkt<br/><b>Läckor:</b> konstant l/s, omräknat till m³ per timme<br/><b>V1-modell:</b> förbrukningsprofiler körs, medan hydrauliskt tryckfall ännu inte beräknas.</div>
+            <div className="sim-note"><b>Rapportering:</b> 1 gång/timme · vattenmängd i m³ + tryck i bar<br/><b>Normalvilla:</b> 8 m³/månad som utgångspunkt<br/><b>Läckor:</b> konstant l/s, omräknat till m³ per timme<br/><b>Hydraulik:</b> Hazen–Williams + lokala K-förluster. Tryck beräknas från inloppet.</div>
             {simError && <div className="sim-error">{simError}</div>}
             <div className="sim-actions">{simRunning?<button onClick={stopSimulation}><Square size={16}/> Pausa</button>:<button className="primary" onClick={startSimulation}><Play size={16}/> {simRows.length?'Starta om':'Starta simulering'}</button>}</div>
           </div>
           <div className="sim-results">
             <div className="progress-wrap"><div className="progress-label"><span>{simRows.length?`${progress}%`:'Ingen simulering startad'}</span><span>{simIndex} / {simRows.length} timmar</span></div><div className="progress"><div style={{width:`${progress}%`}}/></div></div>
             {currentRow && <div className="sim-cards"><div><small>Simulerad tid</small><b>{formatTime(currentRow.time)}</b></div><div><small>Total vattenmängd senaste timmen</small><b>{currentRow.totalVolumeM3.toFixed(4)} m³</b></div><div><small>Varav läckor</small><b>{currentRow.totalLeakVolumeM3.toFixed(4)} m³</b></div><div><small>Inloppstryck</small><b>{currentRow.inletPressure.toFixed(2)} bar</b></div></div>}
-            <div className="table-wrap"><table><thead><tr><th>Tid</th><th>Hushåll</th><th>Läckor</th><th>Totalt</th>{nodes.filter(n=>n.data.component==='meter').map(n=><th key={n.id}>{n.data.label}</th>)}</tr></thead><tbody>{visibleRows.map((r,i)=><tr key={`${r.time}-${i}`}><td>{formatTime(r.time)}</td><td>{(r.totalVolumeM3-r.totalLeakVolumeM3).toFixed(4)} m³</td><td>{r.totalLeakVolumeM3.toFixed(4)} m³</td><td>{r.totalVolumeM3.toFixed(4)} m³</td>{nodes.filter(n=>n.data.component==='meter').map(n=><td key={n.id}>{(r.meterVolumes[n.id]??0).toFixed(4)} m³<br/><small>totalt {(r.meterTotals[n.id]??0).toFixed(3)} m³</small></td>)}</tr>)}</tbody></table>{!simRows.length&&<div className="empty-results">Starta simuleringen för att se timvärden.</div>}</div>
+            <div className="table-wrap"><table><thead><tr><th>Tid</th><th>Hushåll</th><th>Läckor</th><th>Totalt</th>{nodes.filter(n=>n.data.component==='meter').map(n=><th key={n.id}>{n.data.label}</th>)}</tr></thead><tbody>{visibleRows.map((r,i)=><tr key={`${r.time}-${i}`}><td>{formatTime(r.time)}</td><td>{(r.totalVolumeM3-r.totalLeakVolumeM3).toFixed(4)} m³</td><td>{r.totalLeakVolumeM3.toFixed(4)} m³</td><td>{r.totalVolumeM3.toFixed(4)} m³</td>{nodes.filter(n=>n.data.component==='meter').map(n=><td key={n.id}>{(r.meterVolumes[n.id]??0).toFixed(4)} m³<br/><small>totalt {(r.meterTotals[n.id]??0).toFixed(3)} m³<br/>{(r.meterPressures[n.id]??0).toFixed(2)} bar</small></td>)}</tr>)}</tbody></table>{!simRows.length&&<div className="empty-results">Starta simuleringen för att se timvärden.</div>}</div>
           </div>
         </div>
       </section>
