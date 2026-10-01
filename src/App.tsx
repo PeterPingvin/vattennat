@@ -12,7 +12,7 @@ type ComponentType = 'pipe'|'elbow'|'tee'|'cross'|'inlet'|'meter'|'leak'|'open'
 type PortDimensions = { left: string; right: string; top: string; bottom: string }
 type Data = {
   label: string; component: ComponentType; size?: string; length?: number;
-  flow?: number; pressure?: number; monthlyVolumeM3?: number; template?: string; portSizes?: Partial<PortDimensions>; leakFlowLs?: number
+  flow?: number; pressure?: number; hydraulicPressure?: number; monthlyVolumeM3?: number; template?: string; portSizes?: Partial<PortDimensions>; leakFlowLs?: number
 }
 type SimulationRow = {
   time: string
