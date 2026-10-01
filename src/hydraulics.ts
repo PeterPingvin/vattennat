@@ -141,7 +141,7 @@ export function calculateHydraulics(nodes: Node<HydraulicData>[], edges: Edge[],
   }
 
   const disconnected = nodes.filter(n => n.data.component==='meter' && !parent.has(n.id))
-  if(disconnected.length) warnings.push(\`${disconnected.length} hushållsmätare saknar hydraulisk väg till inloppet.\`)
+  if(disconnected.length) warnings.push(`${disconnected.length} hushållsmätare saknar hydraulisk väg till inloppet.`)
   const cycles = edges.filter(e => parent.get(e.source) !== e.target && parent.get(e.target) !== e.source && parent.has(e.source) && parent.has(e.target))
   if(cycles.length) warnings.push('Nätet innehåller slingor. V1 använder en trädberäkning och löser ännu inte flödesfördelning i slutna slingor.')
 
