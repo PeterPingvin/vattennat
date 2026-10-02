@@ -78,7 +78,7 @@ function direction(node:Node<HydraulicData>,other:Node<HydraulicData>,explicit?:
 function junctionK(node:Node<HydraulicData>,p:string,ports:string[]){
   if(node.data.component!=='tee'&&node.data.component!=='cross')return 0
   if(ports.length<=1)return 0
-  return opposite(p)&&ports.includes(opposite(p))?.6:1.8
+  return opposite(p)&&ports.includes(opposite(p)) ? 0.6 : 1.8
 }
 
 function makeGraph(nodes:Node<HydraulicData>[],edges:Edge[]){
